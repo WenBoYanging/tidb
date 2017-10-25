@@ -293,7 +293,28 @@ func (s *testSuite) TestCreateView(c *C) {
 	_, err = tk.Exec("create view v4 (c) as select b+1 as d from t1")
 	c.Assert(err, IsNil)
 
-	tk.MustExec("drop table v1,v2,v3,v4")
+	tk.MustQuery("select c from v1").Check(testkit.Rows("3", "4", "5", "6", "11"))
+	tk.MustQuery("select `b+1` from v2").Check(testkit.Rows("3", "4", "5", "6", "11"))
+	tk.MustQuery("select c from v3").Check(testkit.Rows("3", "4", "5", "6", "11"))
+	tk.MustQuery("select c from v4").Check(testkit.Rows("3", "4", "5", "6", "11"))
+	//check that created view works
+	tk.MustQuery("select * from v1").Check(testkit.Rows("3", "4", "5", "6", "11"))
+	tk.MustQuery("select * from v2").Check(testkit.Rows("3", "4", "5", "6", "11"))
+	tk.MustQuery("select * from v3").Check(testkit.Rows("3", "4", "5", "6", "11"))
+	tk.MustQuery("select * from v4").Check(testkit.Rows("3", "4", "5", "6", "11"))
+
+	tk.MustExec("drop table t1,v1,v2,v3,v4")
+
+	//outer left join with views
+	tk.MustExec("create table t1 (a int)")
+	tk.MustExec("insert into t1 values (1), (2), (3)")
+
+	tk.MustExec("create view v1 (a) as select a+1 from t1")
+	tk.MustExec("create view v2 (a) as select a-1 from t1")
+	tk.MustQuery("select * from t1 natural left join v1 order by a").Check(testkit.Rows("1", "2", "3"))
+	tk.MustQuery("select * from v2 natural left join t1 order by a").Check(testkit.Rows("0", "1", "2"))
+
+	tk.MustExec("drop table v1,v2")
 
 	//view with variable
 	_, err = tk.Exec("create view v1 (c,d) as select a,b+@@global.max_user_connections from t1")
@@ -301,11 +322,39 @@ func (s *testSuite) TestCreateView(c *C) {
 
 	_, err = tk.Exec("create view v1 (c,d) as select a,b from t1 where a = @@global.max_user_connections")
 	c.Assert(err, NotNil)
-	tk.MustExec("drop table t1")
 
 	//view with different col counts
 	_, err = tk.Exec("create view v1 (c,d,e) as select a,b from t1 ")
 	c.Assert(err, NotNil)
 	_, err = tk.Exec("create view v1 (c) as select a,b from t1 ")
 	c.Assert(err, NotNil)
+	tk.MustExec("drop table t1")
+
+	//Aggregate functions in view list
+	tk.MustExec("create table t1 (col1 int)")
+	tk.MustExec("insert into t1 values (1)")
+	tk.MustExec("create view v1 as select count(*) from t1")
+	tk.MustQuery("select * from v1").Check(testkit.Rows("1"))
+	tk.MustExec("drop table t1,v1")
+
+	//view in subquery
+	tk.MustExec("create table t1 (a int)")
+	tk.MustExec("insert into t1 values (1)")
+	tk.MustExec("create table t2 (a int)")
+	tk.MustExec("insert into t2 values (1)")
+	tk.MustExec("insert into t2 values (2)")
+	tk.MustExec("create view v1 as select a from t1")
+	tk.MustExec("create view v2 as select a from t2 where a in (select a from v1)")
+	tk.MustQuery("select * from v1").Check(testkit.Rows("1"))
+	tk.MustExec("drop table t1,t2,v1,v2")
+
+	//view over tables;
+	tk.MustExec("create table t1 (a int)")
+	tk.MustExec("create table t2 (a int)")
+	tk.MustExec("create table t3 (a int)")
+	tk.MustExec("insert into t1 values (1),(2),(3)")
+	tk.MustExec("insert into t2 values (1),(3)")
+	tk.MustExec("insert into t3 values (1),(2),(4)")
+	tk.MustExec("create view v3 (a,b) as select t1.a as a, t2.a as b from t1 left join t2 on (t1.a=t2.a)")
+	tk.MustQuery("select * from v3").Check(testkit.Rows("1 1", "2 <nil>", "3 3"))
 }

@@ -162,24 +162,28 @@ func (e *DDLExec) executeCreateView(s *ast.CreateViewStmt) error {
 	selectstmt := s.Select.(*ast.SelectStmt)
 	fields := selectstmt.Fields.Fields
 	for _, field := range fields {
-		if field.AsName.O == "" {
-			selectFields = append(selectFields, field.Expr.Text())
-		} else {
-			selectFields = append(selectFields, field.AsName.O)
+		if field.WildCard == nil {
+			if field.AsName.O == "" {
+				selectFields = append(selectFields, field.Expr.Text())
+			} else {
+				selectFields = append(selectFields, field.AsName.O)
+			}
 		}
 	}
 	// The column_list in Create View statement could be null, so if Cols is nil,
 	// it saves select_statement field expression or field AsName
 	if s.Cols == nil {
 		for _, field := range fields {
-			if field.AsName.O != "" {
-				s.Cols = append(s.Cols, &ast.ColumnName{
-					Name: field.AsName,
-				})
-			} else {
-				s.Cols = append(s.Cols, &ast.ColumnName{
-					Name: model.NewCIStr(field.Expr.Text()),
-				})
+			if field.WildCard == nil {
+				if field.AsName.O != "" {
+					s.Cols = append(s.Cols, &ast.ColumnName{
+						Name: field.AsName,
+					})
+				} else {
+					s.Cols = append(s.Cols, &ast.ColumnName{
+						Name: model.NewCIStr(field.Expr.Text()),
+					})
+				}
 			}
 		}
 	}
